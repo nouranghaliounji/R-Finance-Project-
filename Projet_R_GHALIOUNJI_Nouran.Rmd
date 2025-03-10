@@ -1,0 +1,839 @@
+---
+---
+---
+
+Titre: **Projet R Data Viz**
+
+Nom: Nouran GHALIOUNJI
+
+Pacours: M1 BIDADI
+
+# Introduction
+
+Nous avons une basé de données sous forme de fichier Excel qui inclut les variables suivantes:
+
+-   Identifier (RIC) : identifiant RIC de l’entreprise
+-   Company Name : Nom de l’entreprise
+-   ISIN : code ISIN de l’entreprise
+-   COUNTRY OF DOMICIL: code du pays de l’entreprise
+
+**Variables environnementales :**
+
+-   Environment Pillar Score: mesure de la performance environnementale de l’entreprise. Il s’agit de la composante E de la norme ESG
+
+-   Carbon Intensity per Energy Produced : Mesure relative aux émissions de CO2
+
+    **Variables économiques et commerciales**
+
+<!-- -->
+
+-   EMPLOYEES (EMP) : nombre d’employés par entreprise comme mesure de la taille de l’entreprise
+
+-   OPERATING PROFIT MARGIN (MARGIN) : profit opérationnel de l’entreprise
+
+-   NET SALES OR REVENUES (SALES) : les revenus commerciaux nets
+
+    **Variables financières**
+
+<!-- -->
+
+-   Market Cap (MCAP): capitalisation boursière de l’entreprise
+
+-   RETURN ON INVESTED CAPITAL (RCAP): le rendement du capital investi
+
+-   Plusieurs Variables PRIX : o 1-day Price PCT Change o 5-day Price PCT Change o 4-week Price PCT Change o 13-week Price PCT Change o 26-week Price PCT Change o YTD Price PCT Change o 52-week Price PCT Change o Price 52 Week High
+
+    **Variables de gouvernance**
+
+<!-- -->
+
+-   CSR Sustainability Committee (CSR) : la mise en place d’un comité de soutenabilité CSR ou pas (Y si oui et N sinon)
+-   Value - Board Structure/Independent Board Members (Board): le pourcentage des members indépendants dans le board
+
+Le but de notre travail est de saisir l'impact des variables économiques, financières, et de gouvernance des entreprises listées dans notre base de données sur notre variable environnementale: le score environnemental.
+
+Tout au long de notre travail on va tenter d'analyser nos données, et de prendre des décisions dont le but ultime est de construire le modèle le moins biaisé possible.
+
+On commence tout d'abord pour importer dans notre environnement les libraries nécessaires pour le travail
+
+```{r}
+library('readxl')
+library('dplyr')
+library('dplyr')
+library('ggplot2')
+#Elle nous permettera de lire les résumés summary de manière plus lisible 
+library('pander') 
+#On désactive les altertes
+options(warn=-1)
+```
+
+Partie 1:
+
+On importe tout d'abord le jeu de données qui est sous forme de fichier Excel qu'on stockera dans le dataframe 'eurostoxx'
+
+```{r}
+eurostoxx<-read_excel("C:/Users/Visiteur/Downloads/Projet R/variables_EuroStoxx600.xlsx")
+View(eurostoxx)
+```
+
+```{r}
+summary(eurostoxx)
+```
+
+# **PARTIE 1: Réponse question 1**
+
+Lorsqu'on execute la fonction str pour voir la structure de la colonne carbonne intensity per energy producted, on remarque que les 'NA' qui sont les valeurs manquantes sont stockés tel que des chaînes de caractère. Dans cette étude on doit s’en tenir à la première variable qui est Environement Pillar Score (EPS) car la variable Carbon Intensity per Energy produced est manquante pour la plupart des observations
+
+```{r}
+str(eurostoxx$`Carbon Intensity per Energy Produced`)
+```
+
+On vérifie une seconde fois avec la fonction is NA et on voit bien ici que R ne reconnaît pas les chaines de caractères 'NA' tel que des valeurs manquantes.
+
+```{r}
+is.na(eurostoxx$'Carbon Intensity per Energy Produced')
+```
+
+On utilise la fonction na.if pour remplacer les chaînes de caractère 'NA' en tant que NA pour que R puisse les traiter comme tel.
+
+```{r}
+eurostoxx$'Carbon Intensity per Energy Produced'[eurostoxx$'Carbon Intensity per Energy Produced' == 'NA'] <- NA
+```
+
+On vérfie de nouveau avec la fonction is.na si l'oppération a fonctionné et cette fois-ci on obtient bien la boolean TRUE lorsqu'on lance la ligne de code.
+
+```{r}
+is.na(eurostoxx$'Carbon Intensity per Energy Produced')
+```
+
+On effectue la même opération sur tout le data frame pour ne pas avoir a rencontré le même problème de nouveau en utilisant la fonction replace.
+
+```{r}
+eurostoxx <-  replace(eurostoxx, eurostoxx=='NA', NA)
+```
+
+# PARTIE 2: Analyse en composante principale
+
+L’analyse en composante principale (ACP) est une technique de réduction de dimensionalité qui permet de visualiser des données et d’identifier les relations entre les différentes variables quantitatives. D’autres méthodes de réduction de dimensions existent aussi pour les données qui sont de nature qualitatives tel que l’analyse des correspondances. Dans notre cas ici, nous avons 8 variables financières et on souhaite pouvoir observer la relation entre ces variables. Typiquement, lorsqu’on a deux ou trois variables, il est assez facile de les représenter visuellement et de saisir la ou les relations qui existent entre elles. Mais dans le cas où nous avons 8 variables comme ici, il est difficile de les visualiser et de saisir la complexité de toutes les relations qui peuvent exister entre les variables. Pour cela, nous avons recours à l’ACP afin d’identifier les relations qui existent entre les différentes variables financières sur le plan multivarié et ponctuellement d’analyser et les ressemblances et les oppositions entre les différentes observations sur notre jeu de données.
+
+De plus, il est utile de rappeler que le but ultime de notre analyse est de saisir l’impact des différentes variables financières, économiques, et de gouvernance sur la performance environnementale des entreprises en effectuant une régression linéaire. L’ajout de nombreuses variables dans une régression peut finir par devenir pénalisant dans notre analyse dans le sens ou il introduirait beaucoup trop de degrés de liberté dans la régression et potentiellement d’autres biais. Synthétiser les nombreuses variables financières que nous obtiendrons grâce à l’ACP nous permettra de tenir compte de l’aspect financier en une seule variable que l’on nommera ‘Fi’ et qu’on pourra directement introduire dans la régression.
+
+Pour effectuer l’analyse en composante principale sur les variables financières, tout d’abord on va reconstruire une data frame à partir des variables financières d’eurostoxx.
+
+```{r}
+print(colnames(eurostoxx))
+```
+
+```{r}
+eurostoxx_acp <- eurostoxx[ ,c("Company Name" , "1-day Price PCT Change\r\n(Σ=Avg)" , "5-day Price PCT Change\r\n(Σ=Avg)", "4-week Price PCT Change\r\n(Σ=Avg)", "13-week Price PCT Change\r\n(Σ=Avg)","26-week Price PCT Change\r\n(Σ=Avg)","YTD Price PCT Change\r\n(Σ=Avg)","52-week Price PCT Change\r\n(Σ=Avg)", "Price 52 Week High\r\n(Σ=Avg)")]
+```
+
+Comme les noms des colonnes sont très compliqués, nous allons renommer chacune des colonnes sélectionnées afin d'avoir des noms qui soient plus simples.
+
+```{r}
+colnames(eurostoxx_acp) <- c("Company Name","1-day Price PCT Change", "5-day Price PCT Change
+", "4-week Price PCT Change", "13-week Price PCT Change", "26-week Price PCT Change", "YTD Price PCT Change", "52-week Price PCT Change", "Price 52 Week High")
+```
+
+On commence en suite par charger les packages dont on a besoin pour effectuer l'ACP
+
+```{r}
+library('FactoMineR')
+library('corrplot')
+library('factoextra')
+```
+
+On remarque que pour la colonne '26 Week price change' nous avons une valeur manquante. Pour exécuter notre ACP correctement, on ne doit pas avoir de valeur manquante et on va donc la remplacer par la valeur de la médiane sur cette colonne.
+
+```{r}
+pander(summary(eurostoxx_acp))
+eurostoxx_acp$'26-week Price PCT Change'[is.na(eurostoxx_acp$'26-week Price PCT Change')] <- median(eurostoxx_acp$'26-week Price PCT Change', na.rm = TRUE)
+eurostoxx_acp$'52-week Price PCT Change'[is.na(eurostoxx_acp$'52-week Price PCT Change')]<- median(eurostoxx_acp$'52-week Price PCT Change', na.rm = TRUE)
+pander(summary(eurostoxx_acp))
+```
+
+Avant d'effectuer l'ACP, on fait une matrice des corrélations pour tenter de voir les relations qui existent entre les différentes variables. La couleur bleu foncée signifie qu'il existe une forte corrélation positive entre deux variables et la couleur rouge vive fait référence à une corrélation négative forte entre deux variables. Ici il ne semble y avoir de corrélation négative forte, mais par contre certaines variables sont corrélées fortement de façon positive entre elles comme '52 week price change', '13 week price percerntage change', '26 week price percentage change', et 'YTD price percentage change'. Cela semble indiqué qu'il existe une forte corrélation entre les changements de prix sur le long terme et c'est quelque chose que l'on pourra investiguer davantage après avoir effectué notre ACP.
+
+```{r}
+
+matrice_correlation <- cor(eurostoxx_acp %>% select_if(is.numeric), use = "complete.obs")
+
+
+corrplot(matrice_correlation, method="color", type='upper', order= "hclust", 
+         tl.col= "black", tl.srt= 45,
+        addCoef.col = 'black', 
+        cl.pos= "n", 
+        cl.cex= 1.2, 
+        addCoefasPercent = TRUE, 
+        number.cex= 0.8)
+```
+
+Nous effectuons notre ACP et obtenons ainsi les résultats suivants:
+
+-   Le premier tableau renvoie la variation expliquée par chaque composante principale. Dans notre cas nous avons 8 composantes puisque nous avons 8 variables entre lesquelles nous cherchons à expliquer le lien.
+
+-   Le graphique des individus: Ce graphique renvoie la représentation des individus en fonction du premier et et du deuxième axe obtenus par l'analyse en composante principale. Plus les individus sont proches l'un de l'autre dans l'espace, plus ils ont de similitude. Dans notre cas, on remarque que l'entreprise 'Swedish Match AB' (individu 449 sur le graphique) se distingue fortement des autres individus.
+
+-   Le graphique des variables: Ce graphique renvoie la représentation des variables en fonction de la première et de la deuxième dimension. Plus des variables sont proches dans l'espace, plus sont corrélées entre elles.
+
+### Interprétation des résultats obtenus
+
+Les variations expliquées par l'analyse: La première dimension explique plus de 44% de la variation dans les variables, la deuxième dimension n'en explique que 18% et puis la 3eme en explique 12% . Ainsi, les 3 premières dimensions de notre ACP expliquent déjà 75% de la variation qui existe entre nos variables financières.
+
+-   La répartition des individus: Ici les individus que nous avons représenté la liste des différentes entreprises. Avant de regarder le graphique des variables on constate d’emblée que la grande majorité des individus semblent être répartis dans le centre du graphique, ce qui suggère que la performance financière des entreprises est assez homogène dans notre échantillon. Cependant, on observe quelques valeurs aberrantes tel que l'individu 449 qui est l'entreprise suédoise 'Swedish Match AB' qui est une multinationale suédoise spécialisée dans les produits tabagiques. On remarque également l'individu 332 qui est l'entreprise d'automobile allemande Rheinmetall AG, et l'individu 32 qui est l'entreprise K&S AG qui est une entreprise chimique allemande. Ces entreprises sont assez se démarquent du reste des entreprises ce qui suggèrent qu'elles enregistrent des résultats financiers qui diffèrent fortement des autres entreprises dans notre jeu de données.
+
+-   La répartition des variables: Le deuxième graphique très important qui est produit par l'analyse en composante principale est celui des variables. Il nous permet de voir quelles variables se ressemblent le plus et lesquelles sont éloignées l'une de l'autre. Sur l'axe des abscisse on trouve la première dimension et sur l'axe des ordonnées la deuxième dimension. Avant d'interpréter des variables sur une dimension, il faut vérifier qu'elles soient bien représentées sur celle-ci et pour cela on n'interprétera uniquement les variables qui ont un cos2 qui soit supérieur à 0.5.
+
+    -   La première dimension: Sur la première dimension, nous avons les variables: 13 week price change, 36 week price change, YTD price change, 52 week price change. En effet, ces variables sont toutes bien représentées sur la 1ère dimension avec un cos2 supérieur à 0,5. Toutes ces variables vont dans le même sens (à droite) ce qui suggère qu'il y a une très forte corrélation entre elles. Si on regarde toutes ces variables on voit qu'elles représentent toutes une variation dans le prix sur le long terme et donc on en fera l'hypothèse que la première composante représente la variabilité financière sur le long terme.
+
+    -   La deuxième dimension: Toutes les variables qu'on a cité sur les première dimension ne sont pas bien représentées sur la deuxième dimension. Sur la deuxième dimension, on a uniquement la variable 1 day price change, 5 day price change et 4 week price change, cependant uniquement la variable 5 day price change est bien représentée avec un cos2 de plus de 0.7 et la variable 4 week price change a un cos2 de 0.467 pas très loin de la threshold de 0.5 donc on peut en tenir en compte mais avec beaucoup d'attention dans notre interprétation. La deuxième dimension ne capte que 18% de la variabilité dans les variabilités est c'est pour cela qu'elle est bien plus difficile à interpréter mais on peut faire l'hypothèse qu'elle représente les variations de prix sur le court terme.
+
+    -   La troisième dimension: Jusque-là, dans notre premier graphique des variables qui incluait uniquement la 1ère et la deuxième composante, on ne voyait pas la variable "price 52 week high", et c'est logique puisque celle-ci n'est représentée sur aucune des autres composantes, mais par contre explique à elle seule plus de 96% de la variabilité sur le troisième axe. On fait donc un graphique ou l'on représente le 3eme axe et on voit que c'est la seule variable qui est représentée sur cet axe. C'est assez logique puisque toutes les autres variables représentent des évolutions en pourcentage, alors que la variable price 52 week high n'est pas exprimée en pourcentage et n'a donc rien en commun avec les autres variables, ce qui explique pourquoi elle est représentée seule dans notre analyse.
+
+```{r}
+rownames(eurostoxx_acp) <- eurostoxx_acp$`Company Name`
+acp_eurostoxx <- PCA((eurostoxx_acp %>% select_if(is.numeric)), scale.unit= T, ncp=length(1:9), graph= T)
+print(summary(acp_eurostoxx))
+
+fviz_pca_var(acp_eurostoxx, axes = c(1, 3), 
+             labelsize = 3) +
+  labs(title = "ACP - Variables sur le 1er et 3ème axe")
+```
+
+Ce graphique représente le pourcentage de variance des variables expliqué par les différentes composantes dans notre analyse. Comme évoqué précédemment la première composante explique 44.8% de la variance, la deuxième 18.1%, et la troisième 12.6%.
+
+Pour choisir le nombre d'axes avec lesquels travailler en ACP il existe de nombreuses méthodes dont les plus connues:
+
+-   La règle du coude: Celle-ci consiste à ne tenir compte que des dimensions avant qu'il y ait un point d'inflexion dans la variance expliquée. En l'occurrence ici, la règle du coude nous encouragerait à ne tenir compte que de la première composante.
+
+-   La règle des 75%: Cette règle nous dit qu'il faut conserver toutes les dimensions jusqu'à avoir 75% de variance cumulée. Dans notre cas cela voudrait dire qu'on conserverait les 3 premiers axes dans notre analyse.
+
+```{r}
+fviz_eig(acp_eurostoxx, addlabels=T)
+```
+
+Extraction de la variable financière Fi à partir de la première composante
+
+```{r}
+Fi <- acp_eurostoxx$ind$coord[, "Dim.1"]
+```
+
+# PARTIE 3: Statistiques descriptives et régression linéaire (Question 3)
+
+On va tout d'abord contruire un nouveau dataframe à partir des variables dont on a besoin pour faire notre analyse qui ont été évoquées dans l'énoncé.
+
+```{r}
+names(eurostoxx) <- gsub("\n", " ", names(eurostoxx))
+
+# Now subset with the modified column names
+new_eurostoxx <- eurostoxx[, c("COUNTRY OF DOMICIL", 
+                        "Environment Pillar Score", 
+                        "EMPLOYEES", 
+                        "OPERATING PROFIT MARGIN", 
+                        "NET SALES OR REVENUES", 
+                        "Market Cap\r (Σ=Avg)", 
+                        "RETURN ON INVESTED CAPITAL", 
+                        "CSR Sustainability Committee", 
+                        "Value - Board Structure/Independent Board Members")]
+```
+
+```{r}
+new_eurostoxx$Fi <- Fi 
+```
+
+Tout d'abord, on va voir les différentes classes dans notre base de données. On constate que les variables auxquelles on va s'intéresser pour notre études sont de différents types:
+
+**-Environment Pillar Score (EPS): charactère**
+
+COUNTRY OF DOMICIL: chaine de caractères
+
+-EMPLOYEES (EMP): chaine de caractères
+
+-OPERATING PROFIT MARGIN (MARGIN): chaine de caractères -\> à modifier
+
+-NET SALES OR REVENUES (SALES): caractère -\> à modifier
+
+-Market Cap (MCAP): numérique
+
+-RETURN ON INVESTED CAPITAL (RCAP): charactère -\> à modifier
+
+-CSR Sustainability Committee (CSR)-\> boolean
+
+-Value: Board Structure/Independent Board Members (Board) –\> caractère
+
+Pour cette étude, on va tenter d'expliquer la variable Environment Pillar Score (EPS) à travers toutes les variables explicatives
+
+```{r}
+lapply(new_eurostoxx, class)
+```
+
+Avant de procéder à une analyse plus détaillée sur nos variables, on doit d'abord convertir les variables charactères en tant que variables numérique afin de pouvoir les visualiser et effectuer les analyses nécessaires dessus.
+
+```{r}
+variables <- c("Environment Pillar Score", "EMPLOYEES", "OPERATING PROFIT MARGIN", "NET SALES OR REVENUES","RETURN ON INVESTED CAPITAL","Value - Board Structure/Independent Board Members") 
+
+new_eurostoxx[variables] <- lapply(new_eurostoxx[variables], as.numeric)
+```
+
+```{r}
+lapply(new_eurostoxx, class)
+```
+
+Une autre transformation qui doit également être effectuée est sur notre variable catégorique 'CSR Sustainability Committee" qui porte pour valeur Y et N correspondant au fait si oui ou non une entreprise possède une comité CSR dans sa structure. Pour pouvoir traiter cette variable, on doit la transfomer en facteur.
+
+```{r}
+#On vérifie si la colonne CSR sustainability est en facteur
+is.factor(new_eurostoxx$'CSR Sustainability Committee')
+#On tranforme le type de la colonne
+new_eurostoxx$'CSR Sustainability Committee' <- factor(
+  new_eurostoxx$'CSR Sustainability Committee', 
+  levels = c("Y", "N"), 
+  label= c("Oui", "Non"))
+#On vérifie si la colonne prend désormais le type facteur
+is.factor(new_eurostoxx$`CSR Sustainability Committee`)
+```
+
+On fait la même chose sur la variable COUNTRY OF DOMICIL qui est une variable catégorique qui correspond au pays d'origine de chaque entreprise.
+
+```{r}
+unique(new_eurostoxx$`COUNTRY OF DOMICIL`)
+```
+
+```{r}
+is.factor(new_eurostoxx$`COUNTRY OF DOMICIL`)
+
+new_eurostoxx$`COUNTRY OF DOMICIL` <- factor(
+  new_eurostoxx$`COUNTRY OF DOMICIL`,
+  levels = c("BD", "BG", "BM", "DK", "ES", "FN", "FR", "IR", 
+             "IT", "LX", "MA", "NL", "NW", "OE", "PT", 
+             "SD", "SW", "UK", "FA", "IM", "PO"),
+  labels = c("Allemagne", "Bulgarie", "Bermudes", "Danemark", 
+             "Espagne", "Finlande", "France", "Irlande", 
+             "Italie", "Luxembourg", "Malte",
+             "Pays-Bas", "Norvège", "Autriche", "Portugal", 
+             "Suède", "Suisse", "Royaume-Uni", "Îles Féroé", 
+             "Île de Man", "Pologne")
+)
+
+is.factor(new_eurostoxx$`COUNTRY OF DOMICIL`)
+#Afficher tous les levels 
+levels(new_eurostoxx$`COUNTRY OF DOMICIL`)
+```
+
+Puisque le nom des pays est donné par code, on fait une recherche sur ce que chaque code de pays signifie et on lui donne sa valeur réelle en tant que label en utilisant la commande factor().
+
+## A. Traiter les valeurs manquantes
+
+Lorsqu'on a des données manquantes, il peut être tentant de simplement les ignorer et de travailler et contruire notre modèle avec des données manquantes. Sachant que chaque obervation nous permet de gagner en précision, construire un modèle avec des données manquantes peut nous faire perdre en précision. Pour savoir que faire avec nos données manquantes, il est important de d'en connaître la raison. C'est pour cela que dans cette partie, on va essayer d'analyser la structure de nos données manquantes pour savoir de quelle façon on peut y remédier.
+
+```{r}
+#On renomme la colonne return on invested capital pour avoir plus d'espace 
+names(new_eurostoxx)[names(new_eurostoxx) == "RETURN ON INVESTED CAPITAL"] <- "ROIC"
+names(new_eurostoxx)[names(new_eurostoxx) == "Market Cap\r (Σ=Avg)"] <- "Market Cap"
+#On utilise la fonction pander ici car elle nous permet d'avoir un summary plus compréhensible et simple à lire. 
+pander(summary(new_eurostoxx))
+```
+
+Dans notre jeu de données on a identifié dans la première partie de notre analyse qu'on avait beaucoup de données manquantes. Etant de données que dans notre jeu de données ne contient pas un grand nombre d'observations, on essaye d'analyser ces valeurs manquantes pour voir si il y a une structure particulière qui affecte les valeurs manquantes et on essaye de les remplacer afin de ne pas avoir un grande perte d'information pour estimer notre modèle de façon plus précise.
+
+```{r}
+#les packages nécessaire pour faire l'analyse des valeurs manquantes 
+library(tidyverse)
+library(naniar)
+library(gtExtras)
+library(mice)
+```
+
+Ce graphique nous permet de visualiser les valeurs manquantes et on peut constater visuellement que sur notre jeu de données, on a des valeurs manquantes pour toutes nos variables hormis la variable 'Market Cap'. On constate également que pour certaines valeurs il semble y avoir exactement le même nombre de valeurs manquantes, ce qui nous pousse à faire une analyse plus détaillée.
+
+```{r}
+gg_miss_var(new_eurostoxx)
+```
+
+Ce graphique nous permet de voir les valeurs qui sont manquantes simultanément. On remarque en effet que sur notre jeu de données, on a plusieurs variables qui sont manquantes sur les mêmes observations. En général lorsqu'on fait face à des données manquantes on a plusieurs choix sur la manière dont elles peuvent être traiter. Les choix les plus communs sont:
+
+-   La supression des valeurs manquantes
+
+-   Le remplacement par une stastique comme la médiane ou la moyenne
+
+-   L'estimation à travers un modèle machine learning comme KNN (k-nearest neighbor) qui consiste à calculer une moyenne de l'observation manquante avec ses voisins les plus proche
+
+Dans notre cas, on a des données qui sont manquantes sur les mêmes observations simultanément et donc les remplacer par une valeur 'artificielle' pourrait nuire à la précision du modèle qu'on cherche à construire et à estimer. Pour cela, on fait le choix de supprimer les observations là ou il y 'a des observations manquantes sur plus de 3 colonnes, et on remplacera par la médiane une observation qui est uniquement manquante sur la colonne 'operating profit margin'.
+
+```{r}
+gg_miss_upset(new_eurostoxx) 
+
+```
+
+Etant donné que la variable qu'on cherche à expliquer est le score environnemental, on remarque que sur plusieurs observations, on a des valeurs manquantes sur cette colonne qui sont aussi manquantes sur d'autres colonnes avec lesquelles on cherche à expliquer la variation dans le score environnemental. Pour y remédier, on supprime ces observations la car les remplacer par la médiane ou la moyenne sur plusieurs colonnes et donc les remplacer par des valeurs artificielles pourrait induire à un biais dans le modèle qu'on cherche à construire plus tard.
+
+```{r}
+#On reconstruit donc notre data frame sans inclure les observations sur lesquelles on a des valeurs manquantes sur 5 colonnes au même temps
+new_eurostoxx <- new_eurostoxx[!(
+  is.na(new_eurostoxx$`OPERATING PROFIT MARGIN`) &
+  is.na(new_eurostoxx$ROIC) &
+  is.na(new_eurostoxx$`Environment Pillar Score`) &
+  is.na(new_eurostoxx$`CSR Sustainability Committee`) &
+  is.na(new_eurostoxx$`Value - Board Structure/Independent Board Members`)
+), ]
+
+```
+
+Ici on reconstruit notre data frame en excluant les observations sur lesquelles on a des valeurs manquantes sur plus de 4 colonnes au même temps pour les mêmes observations.
+
+```{r}
+new_eurostoxx <- new_eurostoxx[!(
+  is.na(new_eurostoxx$ROIC) &
+  is.na(new_eurostoxx$`Environment Pillar Score`) &
+  is.na(new_eurostoxx$`CSR Sustainability Committee`) &
+  is.na(new_eurostoxx$`Value - Board Structure/Independent Board Members`)
+), ]
+
+```
+
+Ici on reconstruit notre data frame en excluant les observations sur lesquelles on a des valeurs manquantes sur plus de 3 colonnes au même temps pour les mêmes observations.
+
+```{r}
+new_eurostoxx <- new_eurostoxx[!(
+  is.na(new_eurostoxx$`Environment Pillar Score`) &
+  is.na(new_eurostoxx$`CSR Sustainability Committee`) &
+  is.na(new_eurostoxx$`Value - Board Structure/Independent Board Members`)
+), ]
+```
+
+Grâce aux transformation qu'on a faites, il ne nous reste plus que des valeurs manquantes sur la colonne 'Operating profit'. Etant donné qu'il ne s'agit que d'une seule valeur, on va la remplacer par sa médiane de sorte à ne plus avoir de valeurs manquantes dans notre jeu de données.
+
+En utilisant la commande structure pour voir notre jeu de données, on voit bien qu'après les opérations qu'on a faite qu'il ne nous reste plus qu'une seule valeur manquante sur la colonne 'Operating Profit'.
+
+```{r}
+pander(summary (new_eurostoxx))
+```
+
+On remplace la valeur manquante sur la colonne operating profit margin par la médiane et on voit bien qu'après traitement de notre jeu de données pour les valeurs manquantes, il ne nous reste plus de valeurs 'NA' dans nos colonnes. L'opération a donc bien fonctionné et le nombre d'observations dans notre jeu de données passe de 600 à 554, ce qui nous reste tout de même très suffisant pour estimer un modèle non biaisé. Dans le cas ou on aurait eu un bien plus grand nombre de NA, on aurait considérer d'autres approches de remplacement robustes en utilisant des méthodes de remplacement par modèle de machine learning pour tenter de préserver au maximum le nombre d'observations. Etant donné que 554 observations sont très suffisantes pour constuire un modèle de regression, on a donc fait le choix de supprimer des observations pour les lignes qui posaient problème et de remplacer par la médiane.
+
+```{r}
+mediane <- median (new_eurostoxx$`OPERATING PROFIT MARGIN`, na.rm = TRUE)
+new_eurostoxx$`OPERATING PROFIT MARGIN`[is.na(new_eurostoxx$`OPERATING PROFIT MARGIN`)] <- mediane 
+pander(summary(new_eurostoxx))
+```
+
+## B. Détecter et traiter les valeurs aberrantes (question 3)
+
+Maintenant que nous n'avons plus de valeurs manquantes sur notre jeu de données, on passe à la détection et au traitement des valeurs aberrantes qui peuvent exister sur notre jeu de données.
+
+Les valeurs aberrantes sont des valeurs qui diffèrent significativement des autres observations sur notre jeu de données. Elles peuvent être soit beaucoup plus grandes ou beaucoup plus petites que les autres observations avec lequelles on travaille. Elle sont particulièrement problèmatiques dans notre cas, car le modèle qu'on cherche à construire est une régression liénaire. Dans la régression linéaire on utilise la méthode des moindres carrés pour estimer nos coefficients. Les valeurs aberrantes peuvent donc avoir une influence disprportionnée sur cette somme de carrés en tirant la ligne de régression vers elles, ce qui fausserait les coefficients estimés et pourrait nous induire en erreur en concluant qu'un coefficient est significatif lorsqu'il ne l'ai pas, ou qu'il ai non significatif lorsqu'il l'est. Nous devons donc détecter l'existence de ces valeurs aberrantes et trouver un moyen de les traiter pour s'assurer d'estimer les relations entre nos variables sans biais.
+
+La formule qu'on utilise en général pour détecter la présence de valeurs aberrantes est la suivante:
+
+**[𝑄1−1.5×𝐼𝑄𝑅,𝑄3+1.5×𝐼𝑄𝑅]** avec Q1 étant le premier quartile et Q3 étant le troisième quartile.
+
+On peut également détecter la présence de valeurs aberrantes grâce au graphique en boite (le box plot), ou les valeurs aberrantes s'affichent généralement distancées du premier et deuxième quartile. On va voir que dans certaines cas extrêmes, le box plot s'affiche comme étant totalement distordu et ça nous permet de détecter la présence de valeurs aberrantes extrêmes.
+
+Pour notre analyse, on va analyser chacune de nos variables une par une en commençant par la variable endogène du score environnemental.
+
+Ici, pour la valeur qu'on cherche à estimer du score environnemental, on remarque qu'il n'y a pas de valeurs aberrantes et on affiche ces principales stastiques grâce à la commande summary.
+
+```{r}
+boxplot(new_eurostoxx$`Environment Pillar Score`)
+summary(new_eurostoxx$`Environment Pillar Score`)
+
+```
+
+On va effectuer de même avec toutes les autres variables qu'on va inclure dans notre modèle.
+
+### La variable employés
+
+Pour la variable qui représente le nombre d'employés, on remarque qu'il y a une très grande présence de valeurs aberrantes. On a beaucoup de valeurs qui sont réparties vers le haut du graphique et le diagramme est complètement déformé.
+
+```{r}
+boxplot(new_eurostoxx$`EMPLOYEES`)
+summary(new_eurostoxx$`EMPLOYEES`)
+```
+
+Maintenant que nous avons identifié graphiquement la présence de valeurs aberrantes sur la colonne qui correspond au nombre d'employés, on identifie ces valeurs aberrantes et on les mets dans la variable 'Valeurs_aberrantes_employees'. On calcule également le pourcentage de valeurs aberrantes dans notre colonne. Sur la colonne employés, on a plus de 9% des observations qui sont aberrantes, ce qui est énorme.
+
+```{r}
+# Calculer les quartiles et la différence entre les quartiles
+Q1 <- quantile(new_eurostoxx$EMPLOYEES, 0.25, na.rm = TRUE)
+Q3 <- quantile(new_eurostoxx$EMPLOYEES, 0.75, na.rm = TRUE)
+IQR <- Q3 - Q1
+
+# Définir les limites inférieures et supérieures
+limite_inférieure <- Q1 - 1.5 * IQR
+limite_supérieure <- Q3 + 1.5 * IQR
+
+# Identifier les valeurs aberrantes
+Valeurs_aberrantes_employees <- new_eurostoxx$EMPLOYEES[new_eurostoxx$EMPLOYEES < limite_inférieure | new_eurostoxx$EMPLOYEES > limite_supérieure]
+print(Valeurs_aberrantes_employees)
+
+print(length(Valeurs_aberrantes_employees)/length(new_eurostoxx$EMPLOYEES))
+#Près de 10% des valeurs dans la colonnes employees sont des valeurs aberrantes
+```
+
+### Variable Operating Profit margin
+
+On fait la même chose avec la variable Operating Profit Margin et on a également un box plot qui s'affiche totalement déformé ce qui indique qui forte présence de valeurs aberrantes.
+
+```{r}
+boxplot(new_eurostoxx$`OPERATING PROFIT MARGIN`)
+summary(new_eurostoxx$`OPERATING PROFIT MARGIN`)
+```
+
+On fait la même chose qu'on a fait pour employees en créant un vecteur pour les valeurs aberrantes de 'Operating profit margin'.
+
+```{r}
+# Calculer les quartiles et la différence entre les quartiles
+Q1 <- quantile(new_eurostoxx$`OPERATING PROFIT MARGIN`, 0.25, na.rm = TRUE)
+Q3 <- quantile(new_eurostoxx$`OPERATING PROFIT MARGIN`, 0.75, na.rm = TRUE)
+IQR <- Q3 - Q1
+
+# Définir les limites inférieures et supérieures
+limite_inférieure <- Q1 - 1.5 * IQR
+limite_supérieure <- Q3 + 1.5 * IQR
+
+# Identifier les valeurs aberrantes
+Valeurs_aberrantes_OPM <- new_eurostoxx$`OPERATING PROFIT MARGIN`[new_eurostoxx$`OPERATING PROFIT MARGIN` < limite_inférieure| new_eurostoxx$`OPERATING PROFIT MARGIN` > limite_supérieure]
+print(Valeurs_aberrantes_OPM)
+print(length(Valeurs_aberrantes_OPM)/length(new_eurostoxx$`OPERATING PROFIT MARGIN`))
+#On constate que 7% des valeurs sur la colonnes operating profit margin sont des valeurs aberrantes 
+```
+
+### Net Sales or Revenues
+
+On constate également que pour les colonnes net sales or revenues on a beaucoup de valeurs qui semblent extrêmes.
+
+```{r}
+boxplot(new_eurostoxx$`NET SALES OR REVENUES`)
+summary(new_eurostoxx$`NET SALES OR REVENUES`)
+```
+
+Plus de 11% des observations sur la colonne operating profit margin sont des valeurs aberrantes.
+
+```{r}
+# Calculer les quartiles et la différence entre les quartiles
+Q1 <- quantile(new_eurostoxx$`NET SALES OR REVENUES`, 0.25, na.rm = TRUE)
+Q3 <- quantile(new_eurostoxx$`NET SALES OR REVENUES`, 0.75, na.rm = TRUE)
+IQR <- Q3 - Q1
+
+# Définir les limites inférieures et supérieures
+limite_inférieure <- Q1 - 1.5 * IQR
+limite_supérieure <- Q3 + 1.5 * IQR
+
+# Identifier les valeurs aberrantes
+Valeurs_aberrantes_NetSalesRevenues <- new_eurostoxx$`NET SALES OR REVENUES`[new_eurostoxx$`NET SALES OR REVENUES` < limite_inférieure| new_eurostoxx$`NET SALES OR REVENUES` > limite_supérieure]
+print(Valeurs_aberrantes_NetSalesRevenues)
+print(length(Valeurs_aberrantes_NetSalesRevenues)/length(new_eurostoxx$`NET SALES OR REVENUES`))
+#On constate que 11% des valeurs sur la colonnes operating profit margin sont des valeurs aberrantes
+```
+
+### Market Cap
+
+On constate également que pour la colonne Market Cap elle aussi semble avoir plusieurs valeurs extrêmes.
+
+```{r}
+boxplot(new_eurostoxx$`Market Cap`)
+summary(new_eurostoxx$`Market Cap`)
+```
+
+Plus de 11% des observations sur la colonne market cap sont des valeurs extrêmes.
+
+```{r}
+# Calculer les quartiles et la différence entre les quartiles
+Q1 <- quantile(new_eurostoxx$`Market Cap`, 0.25, na.rm = TRUE)
+Q3 <- quantile(new_eurostoxx$`Market Cap`, 0.75, na.rm = TRUE)
+IQR <- Q3 - Q1
+
+# Définir les limites inférieures et supérieures
+limite_inférieure <- Q1 - 1.5 * IQR
+limite_supérieure <- Q3 + 1.5 * IQR
+
+# Identifier les valeurs aberrantes
+Valeurs_aberrantes_MarketCap <- new_eurostoxx$`Market Cap`[new_eurostoxx$`Market Cap`< limite_inférieure| new_eurostoxx$`Market Cap` > limite_supérieure]
+print(Valeurs_aberrantes_MarketCap)
+print(length(Valeurs_aberrantes_MarketCap)/length(new_eurostoxx$`Market Cap`))
+#On constate que 12% des valeurs sur la colonne Market Cap sont des valeurs aberrantes
+```
+
+### Value - Board Structure/Independent Board Members
+
+Contrairement aux autres colonnes, la colonne value-board structure/independent board members ne semble pas avoir beaucoup de valeurs aberrantes. Sur le graphique on détecte uniquement la présence de potentiellement 2 valeurs qui sont aberrantes.
+
+```{r}
+boxplot(new_eurostoxx$`Value - Board Structure/Independent Board Members`)
+summary(new_eurostoxx$`Value - Board Structure/Independent Board Members`)
+```
+
+```{r}
+# Calculer les quartiles et la différence entre les quartiles
+Q1 <- quantile(new_eurostoxx$`Value - Board Structure/Independent Board Members`, 0.25, na.rm = TRUE)
+Q3 <- quantile(new_eurostoxx$`Value - Board Structure/Independent Board Members`, 0.75, na.rm = TRUE)
+IQR <- Q3 - Q1
+
+# Définir les limites inférieures et supérieures
+limite_inférieure <- Q1 - 1.5 * IQR
+limite_supérieure <- Q3 + 1.5 * IQR
+
+# Identifier les valeurs aberrantes
+Valeurs_aberrantes_value <- new_eurostoxx$`Value - Board Structure/Independent Board Members`[new_eurostoxx$`Value - Board Structure/Independent Board Members`< limite_inférieure| new_eurostoxx$`Value - Board Structure/Independent Board Members` > limite_supérieure]
+print(Valeurs_aberrantes_value)
+print(length(Valeurs_aberrantes_value)/length(new_eurostoxx$`Value - Board Structure/Independent Board Members`))
+#On constate que 3% des valeurs sur la colonne board structure sont aberrantes 
+```
+
+Maintenant qu'on a fait une analyse des valeurs aberrantes, on peut en tirer que sur notre jeu de données, il y a une présence de plusieurs valeurs extrêmes qui peuvent par la suite impacter nos coefficients, voire même les biaiser. Pour cette raison, et afin de garantir les résulats les moins biaisés possible pour notre régression, on va traîter nos valeurs extrêmes. Pour cela, de nombreux choix s'offent à nous, et on va tenter de rapidement les expliquer et puis de justifier l'utilisation d'une de ces méthodes pour traîter nos valeurs aberrantes:
+
+-   **Supprimer les valeurs aberrantes:** Une option qui s'offre à nous et celle de supprimer les valeurs aberrantes. Cela peut être très tentant car de la sorte on se retrouve avec uniquement des valeurs 'normales'. Cependant, et comme on l'a constaté, pour certaines colonnes on a plus de 12% de notre jeu de données qui représente des valeurs aberrantes, et cela voudra dire supprimer plus de 12% de nos données. A priori, la raison pour laquelle les valeurs semblent être aussi élevées ou aussi peu élevées pour certaines colonne peut relever du fait que notre jeu de données inclut de très grandes entreprises et d'autres qui sont moins 'grandes', ce qui peut expliquer de grandes différences par rapport au nombre d'employés, de profit généré, de ventes réalisées, etc. Pour nous, et dans notre cas, on juge que supprimer des valeurs pourrait conduire à un plus gros biais dans notre regression que de simplement les laisser.
+
+-   **Remplacer par la médiane:** Remplacer les valeurs aberrantes par la médiane est également une méthode très utilisée pour traîter les valeurs aberrantes. Elle peut être valable sous plusieurs scénarios et permet de ne pas perdre d'informations. Cependant, cette méthode a beaucoup plusieurs de sens lorsque les valeurs aberrantes sont le résultats de fautes de frappes ou de mesure et donc remplace une information qui était 'fausse' par une tendence centrale de la distribution de la colonne concernée. Cependant, dans notre cas, et suite à notre analyse, il ne semblerait pas que les valeurs aberrantes soient le résulat d'informations incorrectes, mais ça semblerait plutôt être expliqué par la présence de géantes, grandes, moyennes, et plus petites entreprises. Pour cela, remplacer par la médiane ici nous ferait perdre des informations sur ces observations qu'on a jugé être 'aberrantes'.
+
+-   **Windsorisation:** La windorisation est une méthode qui consiste à remplacer les valeurs aberrantes par des valeurs qui sont proches, comme un quantile, et permet donc de significativement réduire l'impact des valeurs aberrantes. Elle permet donc de ramener les valeurs extrêmes à un seuil plus raisonnable. Dans notre cas, elle est jugée comme étant moins agressive que la supression des données ou le remplacement par la médiane car elle permet de ne pas ignorer la contribution des valeurs extrêmes, qui dans notre cas, eux aussi ont également des informations qui peuvent être importantes à considérer pour notre modèle. A noter que cette méthode ne supprime pas totalement les valeurs aberrantes, mais les ramène à un seuil raisonnable.
+
+On va appliquer une windsorisation sur toutes les colonnes ou on a identifié la présence de valeurs aberrantes dans notre jeu de données:
+
+```{r}
+
+library(DescTools) #package qui inclut la fonctiton windsorisation
+
+# Exclure "Environment Pillar Score" de la Winsorisation puisque celle-ci n'avait pas de valeurs aberrantes
+eurostoxx_windsorize <- data.frame(lapply(names(new_eurostoxx), function(col_name) {
+  col <- new_eurostoxx[[col_name]]  # Extraire la colonne
+  if (is.numeric(col) && col_name != "Environment Pillar Score") {
+    Winsorize(col, val = quantile(col, probs = c(0.1, 0.9), na.rm = TRUE))
+  } else {
+    col  # Garder les colonnes non numériques ou spécifiquement exclues inchangées
+  }
+}))
+
+# Renommer les colonnes pour correspondre aux noms d'origine
+colnames(eurostoxx_windsorize) <- colnames(new_eurostoxx)
+
+# Afficher les données après Winsorisation
+print(eurostoxx_windsorize)
+
+
+```
+
+A travers les digrammes en moustache suivants qu'on a produit tout à l'heure avant d'avoir fait notre traitement des valeurs aberrantes, on observe cependant une grande différence avec ces digrammes en moustaches qu'on a produit après la windorisation. Certes il reste encore des valeurs aberrrantes, mais ceci s'explique par le fait que nous sommes en présence de beaucoup de valeurs aberrantes qui sont utiles dans notre analyse et il serait donc irréaliste de ne plus en avoir du tout. Elles ont certes été réduites, mais elle sont encore présentes dans notre jeu de donnée mais de façon moins extrême, ce qui faussera moins les coefficients dans notre regression.
+
+```{r}
+colonnes <- c("EMPLOYEES", "OPERATING PROFIT MARGIN", 
+                     "NET SALES OR REVENUES", "Market Cap", "ROIC")
+
+# Boucle pour tracer un boxplot pour chaque colonne
+for (col in colonnes) {
+  boxplot(eurostoxx_windsorize[[col]], 
+  main = paste("Boxplot de", col), 
+          ylab = col, 
+          col = "lightblue")
+}
+
+```
+
+### C. Relations entre les variables (question 3)
+
+On commence tout d'abord à effectuer quelques analyses graphiques en prenant soin à différencier entre nos variables qualitative et nos variables quantitatives. Le but de cette analyse est de mieux comprendre notre jeu de données et d'analyser les différentes relations qui existent entre nos variables afin de mieux saisir l'effet des différentes variables sur le environment pillar score qu'on cherche à expliquer.
+
+```{r}
+pander(summary(eurostoxx_windsorize))
+```
+
+Sur ce graphique on observe la distribution de la variable qu'on cherche à expliquer par pays. Ceci peut être intéressant pour comprendre et voir si un pays ou un groupe de pays a tendence à avoir un score environnemental plus ou moins élevé que d'autres.
+
+Une chose que l'on remarque d'emblée sur le graphique est que tous les pays ne sont pas tous représentés équitablement. C'est à dire que certains pays sont beaucoup plus présents que d'autres et on plusieurs observations, tandis que certains pays sont représentés par une ou un nombre petits d'observations.
+
+On observe que des pays comme le Portugal et l'Espagne qui n'ont pas un grand nombre d'observations semblent avoir en moyenne les scores les plus élevés. Ceci peut être expliqué par un biais d'autoselection ou seules les entreprises qui ont un score élevé sont représentée.
+
+```{r}
+library('ggplot2')
+ggplot(eurostoxx_windsorize, aes(x = `COUNTRY OF DOMICIL`, y = `Environment Pillar Score`)) +
+  geom_boxplot() +
+  labs(title = "Distribution du Score par Catégorie",
+       x = "Catégorie",
+       y = "Score Environment Pillar") +
+  theme_minimal() +
+  #On ajoute cette ligne pour avoir le nom des pays affichés de façon claire avec une rotation de 45°
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+Ce graphique représente la corrélation entre les différents variables quantitatives. La ligne qui nous intéresse le plus est celle qui représente 'environment pillar score' sur laquelle il semblerait que la majorité des variables aient une corrélation positive ou négative avec le score environnemental. Ceci nous indique que nous sommes sur la bonne piste pour plus tard construire notre modèle et comprendre si il s'agit de simples corrélations (comme représentées ici) ou alors si il y a bel et bien un effet de causalité entre nos variables explicatives et la variable du score environnemental.
+
+```{r}
+#Package pour la visualisation
+library(GGally)
+ggpairs(eurostoxx_windsorize, columns = c("Environment Pillar Score", "EMPLOYEES","OPERATING PROFIT MARGIN", "NET SALES OR REVENUES","Market Cap","ROIC", "Value - Board Structure/Independent Board Members"))
+```
+
+Le graphique ci-dessous est une autre façon de visualiser la corrélation entre les différentes variables. On observe quelques corrélations entre nos variables explicatives comme 'employees' et 'net sales & revenues', ce qui est assez logique. Plus une entreprise sera grande, plus elle aura d'employés et aura tendence à réaliser un plus grand nombre de ventes et de revenues. On insistera cependant tout à l'heure sur notre modèle à vérifier comme nous ne sommes pas en présence de multicollinéarité. Le même phénomène est observé pour 'market capitalization' et 'net sales & revenues'.
+
+```{r}
+library(corrplot)
+library(dplyr)
+
+# Sélectionner uniquement les colonnes numériques
+numerique_eurostoxx <- new_eurostoxx %>% select_if(is.numeric)
+
+# Calculer la matrice de corrélation
+correlation_matrix <- cor(numerique_eurostoxx, use = "complete.obs")
+
+
+# Afficher la heatmap
+corrplot(correlation_matrix, method = "color", type = "upper", tl.col = "black", tl.srt = 45, tl.cex = 0.7)
+
+```
+
+Il semblerait qu'il y ait une relation positive entre le nombre d'employés et le score environnemental. Plus le nombre d'employés est grand, plus le score environnemental a tendence à augmenter. Ceci est assez logique puisque généralement, plus une entreprise est grande, le plus grand budget elle aura à consacrer plus améliorer son impact environnemental. (mais ceci n'est pas toujours vrai!).
+
+```{r}
+plot(eurostoxx_windsorize$EMPLOYEES, eurostoxx_windsorize$`Environment Pillar Score`,
+     main = "Effect of Employees on Environment Pillar Score",
+     xlab = "Employees",
+     ylab = "Environment Pillar Score",
+     col = "blue", pch = 19)
+abline(lm(eurostoxx_windsorize$`Environment Pillar Score` ~ eurostoxx_windsorize$EMPLOYEES), col = "red", lwd = 2)
+
+```
+
+Il ne semble pas y avoir de relation linéaire entre la variable operating profit margin et la variable environement pillar score. Le profit ne jouerait à priori donc pas de rôle important sur le score environnemental d'une entreprise, contrairement au nombre d'employés.
+
+```{r}
+plot(eurostoxx_windsorize$`OPERATING PROFIT MARGIN`, eurostoxx_windsorize$`Environment Pillar Score`,
+     main = "Effect du Profit sur le Score environnemental",
+     xlab = "profit",
+     ylab = "score environnemental",
+     col = "blue", pch = 19)
+abline(lm(eurostoxx_windsorize$`Environment Pillar Score` ~ eurostoxx_windsorize$`OPERATING PROFIT MARGIN`), col = "red", lwd = 2)
+```
+
+Il semblerait cependant qu'il y ait une relation positive entre le revenu et le score environnemental. On remarque sur ce graphique que plus le revenue d'une entreprise augmente, plus le score environnemental aura également tendence à augmenter.
+
+```{r}
+plot(eurostoxx_windsorize$`NET SALES OR REVENUES`, eurostoxx_windsorize$`Environment Pillar Score`,
+     main = "Effect du Revenue sur le Score environnemental",
+     xlab = "revenues",
+     ylab = "score environnemental",
+     col = "blue", pch = 19)
+abline(lm(eurostoxx_windsorize$`Environment Pillar Score` ~ eurostoxx_windsorize$`NET SALES OR REVENUES`), col = "red", lwd = 2)
+```
+
+Il ne semble cependant pas y avoir une relation entre la capitalization boursière et le score environnemental. On voit une légère relation positive, mais reste à voir si celle-ci sera significative dans notre modèle.
+
+```{r}
+plot(eurostoxx_windsorize$`Market Cap`, eurostoxx_windsorize$`Environment Pillar Score`,
+     main = "Effect de la capitalization du marché sur le Score environnemental",
+     xlab = "Capitalization du marché",
+     ylab = "score environnemental",
+     col = "blue", pch = 19)
+abline(lm(eurostoxx_windsorize$`Environment Pillar Score` ~ eurostoxx_windsorize$`Market Cap`), col = "red", lwd = 2)
+```
+
+Il ne semble pas y avoir une forte relation liénaire entre le retour sur capital investi et le score environnemental. On observe une légère tendence vers la baisse entre les deux variable qui indiquerait que plus le retour sur capital augmenterait, plus le score environnemental baisserait, mais cette relation devra également être vérifiée par notre modèle.
+
+```{r}
+plot(eurostoxx_windsorize$ROIC, eurostoxx_windsorize$`Environment Pillar Score`,
+     main = "Effect du ROIC sur le Score environnemental",
+     xlab = "ROIC",
+     ylab = "score environnemental",
+     col = "blue", pch = 19)
+abline(lm(eurostoxx_windsorize$`Environment Pillar Score` ~ eurostoxx_windsorize$ROIC))
+```
+
+Il semblerait qu'il n'y ait pas de relation entre les membres indépendants et le score environnemental.
+
+```{r}
+plot(eurostoxx_windsorize$`Value - Board Structure/Independent Board Members`, eurostoxx_windsorize$`Environment Pillar Score`,
+     main = "Effect du pourcentage de membres indépendants sur le Score environnemental",
+     xlab = "Value",
+     ylab = "score environnemental",
+     col = "blue", pch = 19)
+abline(lm(eurostoxx_windsorize$`Environment Pillar Score` ~ eurostoxx_windsorize$`Value - Board Structure/Independent Board Members`), col = "red", lwd = 2)
+```
+
+# PARTIE 4: Modélisation (question 4)
+
+Dans cette partie on va construire notre modèle de régression linéaire pour voir la relation entre nos variables explicatives et la variable du score environnemental et on va tenter d'interpréter les résultats obtenus.
+
+### Construction d'un premier modèle
+
+La première chose qu'on regarde dans le sommaire de notre modèle est la F-Stastistic globale. On voit que notre modèle est globalement significatif avec une valeur P qui est largement inférieure à 5%. Cela signifie qu’au moins une variable dans le modèle explique significativement (est supérieure à 0) la variation du score environnemental.
+
+La deuxième chose qu'on observe est le coefficient de détermination ajusté (Adjusted R squared). Puisque nous sommes en présence d'une régression multiple, on ne se contente pas d'observer le coefficient de détermination (le R squared) puisque celui-ci augmente artificiellement lorsqu'on ajoute des variables dans un modèle, même si elles ne sont pas significatives. On voit donc à travers le coefficient de détermination ajusté que notre modèle explique plus de 37% de la variabilité du score environnemental.
+
+En regardant les coefficients, on voit que le nombre d'employés, le profit opérationnel, les revenus commerciaux nets, le rendement du capital investi, et la non-mise en place d’un comité de soutenabilité CSR contrairement à la mise en place sont significatifs et permettent d'expliquer de façon positive ou négative la variabilité dans le score environnemental.
+
+Les variables comme la capitalisation boursière de l'entreprise et le pourcentage de membre indépendants dans le bureau ne sont pas significatives et donc ne permettent pas d'expliquer la variabilité dans le score environnemental. Les interpréter ne servirait à rien car elles sont jugées comme étant indifférentes de 0.
+
+Pour les pays, R a automatiquement pris comme catégorie de référence l'Allemagne et donc les coefficients que l'on voit pour les autres pays sont les différences par rapport à celui de l'Allemagne. On voit par exemple que, la France a un coefficient positif et significatif qui signifie que lorsqu'une entreprise est française, elle a tendence a avoir un impact plus élevé de 0.01 unités sur le score environnemental par rapport à une entreprise allemande. Tous les coefficients pour les pays sont toujours à interpréter par rapport à la catégorie de référence qui est l'Allemagne.
+
+La variable employées qui mesure le nombre d'employés dans une entreprise semble être significative à hauteur de 1%, ce qui dépasse le seuil de 5%. Il semblerait que plus une entreprise a d'employés, plus son score environnemental aurait tendance à augmenter. Pour une augmentation d'une unité d'employés, il y'aurait une augmentation de 0.00006950 unités dans le score environnemental des entreprises.
+
+La variable opearting profit margin représente le profit opérationnel de l'entreprise, et semble être elle aussi significative à un seuil de 1%, qui également dépasse les 5%. Pour une augmentation d'une unité dans le profit opérationnel de l'entreprise, il y aurait une augmentation de 0.1813 unités dans le score environnemental.
+
+La variable net sales and revenues représente les revenus commerciaux nets et est aussi fortement significative dans le modèle et aurait un impact positif sur le score environnemental d'une entreprise. Plus les revenus commerciaux nets sont élevés, plus le score environnemental aura tendence également à être plus haut que la moyenne. Ici, quitte à une augmentation d'une unité dans les revenus commerciaux nets d'une entreprise, il y aurait une augmentation de 0.0000002604 unités dans le score environnemental.
+
+La variable ROIC représente le rendement du capital investi. Elle est significative dans notre modèle à hauteur de 5%, mais a un impact négatif sur le score environnemental. Plus le rendement du capital investi augmente, plus le score environnemental aura donc tendance à baisser. Ici, suite à une augmentation d'une unité dans le rendement du capital investi, le score environnemental baisserait de 0.3511 unités.
+
+La variable CSR sustainability committee réprésente la mise en place d’un comité de soutenabilité CSR. Il s'agit d'une variable catégorique et donc R a pris comme catégorie de référence la catégorie 'Oui'. Le coefficient qui s'affiche ici représente donc la différence de variation dans le score environnemental pour la catégorie 'Non' par rapport à la categorie de référence 'Oui'. Le coefficient est également significatif et donc on observe que lorsqu'une entreprise ne met pas en place un comité de soutenabilité CSR, son score environnemental aura tendence à être plus faible qu'une entreprise qui met en place un comité de soutenabilité CSR. Cette différence est de -19.17, ce qui est énorme étant donné que le score environnemental est un nombre entre 0 et 100. La variable comité de soutenabilité CSR influencerait donc le score environnemental à pratiquement hauteur de 20%. Ceci dit, ce résultat est assez logique puisque la mise en place s'un système CSR au sein des entreprises représente une des premières étapes dans la prise de conscience écologique des entreprises de nos jours.
+
+```{r}
+#On crée notre modèle avec environment pillar score comme variable endogène et le reste comme variables exogènes
+
+predictors <- eurostoxx_windsorize[, -ncol(eurostoxx_windsorize)] 
+model1 <- lm(`Environment Pillar Score`~ ., data=predictors) #A modifier pour enlever la dernière colonne
+#commande pour avoir le sommaire du modèle
+print(summary(model1))
+```
+
+On crée un deuxième modèle où on ne garde que les variables explicatives. On voit que notre modèle est globalement significatif, mais cependant le coefficient de détermination ajusté est plus faible sur ce dexième modèle que sur le premier. Le premier modèle semble donc être plus judicieux et on gardera les interprétations qu'on a effectué sur le premier modèle.
+
+```{r}
+model2 <- lm(`Environment Pillar Score`~ `COUNTRY OF DOMICIL` + EMPLOYEES  + `OPERATING PROFIT MARGIN`+ `NET SALES OR REVENUES`+ ROIC + `CSR Sustainability Committee`, data=new_eurostoxx)
+print(summary(model2))
+```
+
+Une autre mesure qui permet de comparer les modèles entre eux c'est celle de l'AIC (Akaike Information Criterion). On calcule donc l'AIC des deux modèles qu'on a construit pour pouvoir les comparer entre eux. En règle général on choisit le modèle avec le AIC le moins élevé, et dans notre cas c'est encore le 1er modèle qui semble être plus approprié pour expliquer la variable du score environnemental.
+
+```{r}
+aic_value1 <- AIC(model1)
+aic_value2 <- AIC(model2)
+
+aic_value1 
+aic_value2 
+
+```
+
+## Régression avec la variable FI
+
+Maintenant, on inclut la variable Fi qui représente la variabilité financière sur le long terme et on essaye de voir l'impact de cette variable sur le score environnemental. En incluant la variabilité financière sur le long terme, on constate qu'elle est significative au niveau de 1% dans l'explication sur score environnemental et semble suggérer que le score environnemental d'une entreprise varierait dans le même sens que la variabilité financière sur le long terme. Cela pourrait potentiellement s'expliquer par le fait qu’une forte variabilité financière peut pousser une entreprise à adopter des pratiques durables pour se stabiliser, améliorer son image et répondre aux attentes sociales et réglementaires.
+
+```{r}
+model3 <- lm(`Environment Pillar Score`~ ., data=eurostoxx_windsorize)
+#commande pour avoir le sommaire du modèle
+print(summary(model3))
+
+```
+
+# Conclusion
+
+ans le travail que nous avons présenté on a tenté de répondre aux questions posées tout en allant plus loin dans notre analyse pour saisir l'effet des variables économiques, commerciales, financières, et de gouvernance sur notre variable environnemental.
+
+Nous avons tout d'abord bien expliqué le choix de la variable environemental score par rapport à celle de carbon intensity pour effectuer notre analyse. Il s'est avéré que la variable carbon intensity était manquante dans notre jeu de données et qu'il n'était donc pas possible d'obtenir des informations sur les émissions de carbone des entreprises.
+
+Par la suite, nous avons bien pris soin de nettoyer notre jeu de données en accomplissant les modifications suivantes:
+
+-   Ne conserver que les colonnes dont on a besoin pour l'analyse et les renommer
+
+-   Faire en sorte que R reconnaisse les valeurs manquantes (NA)
+
+-   Faire en sorte en R différencie entre les variables numériques et catégoriques
+
+-   Analyser et traiter les valeurs manquantes en les supprimant ou en les remplaçant par la médiane
+
+-   Analyser et traiter les valeurs aberrantes par méthode de windsorisation
+
+On a utilisé la représentation graphique et les statistiques descriptives pour analyser, reconnaître et traiter les problèmes qui pouvaient exister sur notre jeu de données.
+
+Puis on a également utilisé la représentation graphique et les statistiques pour analyser les relations entre nos variables avant de passer à la modélisation.
+
+Une fois nos données prêtes, et après avoir réalisé une analyse de données, nous avons pu modéliser nos données à travers une régression linéaire qui nous a permis de bien saisir la relation entre notre variable endogène (score environnemental) et nos variables exogènes. On a pu voir que le modèle construit était stastiquement significatif et que nos variables ont pu expliquer plus de 34% de la variation dans le score environnemental.
+
+Comme tout travail statistique qui est limité par un temps, on doit toujours faire des choix. Tout au long de ce projet, nous avons tenté d'effectuer les choix qui semblaient être les plus raisonnables, mais bien évidemment d'autres choix auraient pût être fait et auraient peut-être conclus à un modèle qui explique une plus grande partie de la variation de notre variable d'intérêt. Dans le futur, on peut ajouter d'autres variables, traiter les valeurs manquantes ou aberrantes de façon différente. D'autres analyses suite à la régression peuvent également être faites pour détecter si il y a des problèmes de multiculinarité, de hétéroscédasticité ou d'endogeneité dans le modèle. D'autres modèles de régression comme les GLM peuvent également être mis en place et comparer avec le modèle que nous avons construit dans cette analyse.
